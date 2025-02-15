@@ -15,6 +15,7 @@ public class Display {
     public static Logger logger;
     public static Display plugin;
     public static ProxyServer proxy;
+    public static DisplayManager DISPLAY_MANAGER;
 
     @Inject //injects the proxy server and logger into the plugin class (dependency injection)
     public Display(ProxyServer proxy, Logger logger) {
@@ -26,6 +27,7 @@ public class Display {
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
         logger.info("{} Display Plugin Enabled {}", Color.CYAN, Color.RESET);
+        DISPLAY_MANAGER = new DisplayManager();
         DisplayCommand.register();
     }
 }
