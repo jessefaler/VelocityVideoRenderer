@@ -3,7 +3,7 @@ package com.protoxon.display.command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.protoxon.display.Display;
-import com.protoxon.display.command.subcommand.CreateCommand;
+import com.protoxon.display.command.subcommand.*;
 import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
@@ -21,6 +21,9 @@ public class DisplayCommand {
 
         // Register subcommands
         root.then(CreateCommand.register());     // CREATE
+        root.then(SetCommand.register());    // SET
+        root.then(PlayCommand.register()); // PLAY
+        root.then(StopCommand.register()); // STOP
 
         // Create the Brigadier command
         BrigadierCommand brigadierCommand = new BrigadierCommand(root);
