@@ -7,7 +7,11 @@ import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.protocol.world.Location;
+import com.github.retrooper.packetevents.util.Vector3d;
+import com.github.retrooper.packetevents.util.Vector3f;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
 import net.kyori.adventure.text.Component;
 
@@ -25,7 +29,7 @@ public class DisplayInstance {
     int entityId;
     private static final Random random = new Random();
     byte flags;
-    DisplayPipeline displayWorker = new DisplayPipeline(this);
+    DisplayPipeline displayPipeline = new DisplayPipeline(this);
 
     /**
      * A Display instance
@@ -48,6 +52,7 @@ public class DisplayInstance {
         setLineWidth(100000);
         setBackgroundColor(4278190080L); // Black & No Opacity
         setIsSeeThrough(false);
+        setScale(0.2f);
     }
 
     /**
@@ -56,23 +61,36 @@ public class DisplayInstance {
      * @param maxPixels the max number of pixels
      */
     public void setMaxPixels(int maxPixels) {
-        displayWorker.maxPixels = maxPixels;
+        displayPipeline.maxPixels = maxPixels;
     }
 
     /**
-     * Plays an MP4 file
-     * @param path the path to the MP4 file
+     * Plays an video from a file (MP4, webm, ect)
+     * @param path the path to the file
      */
-    public void playMP4(String path) {
-        displayWorker.play(path);
+    public void playFromFile(String path) {
+        displayPipeline.play(path);
+    }
+
+    public void pause() {
+        displayPipeline.pause();
+    }
+
+    public void resume() {
+        displayPipeline.resume();
+    }
+
+    public void setMaxFrameRate(int maxFrameRate) {
+        displayPipeline.updateMaxFrameRate(maxFrameRate);
     }
 
     /**
      * Plays a youtube video
      * @param url the url to the youtube video
      */
-    public void playYoutube(String url) {
-        //TODO implement playing from youtube
+    public void playFromURL(String url) {
+        String streamUrl = displayPipeline.getStreamUrl(url);
+        displayPipeline.play(streamUrl);
     }
 
     public void spawn(User user, Location location) {
@@ -139,6 +157,36 @@ public class DisplayInstance {
         }
         // Create the entity data containing the text opacity value
         EntityData textMetadata = new EntityData(26, EntityDataTypes.BYTE, finalOpacity);
+        // Create the metadata packet
+        WrapperPlayServerEntityMetadata packet = new WrapperPlayServerEntityMetadata(entityId, Collections.singletonList(textMetadata));
+        // Send the packet to the user
+        user.sendPacket(packet);
+    }
+
+    /**
+     * Sets the scale of the display
+     * <a href="https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Display">Display Entity Metadata information.</a>
+     * @param scale the scale to apply
+     */
+    public void setScale(float scale) {
+        Vector3f scaleValue = new Vector3f(scale, scale, scale);
+        EntityData textMetadata = new EntityData(12, EntityDataTypes.VECTOR3F, scaleValue);
+        // Create the metadata packet
+        WrapperPlayServerEntityMetadata packet = new WrapperPlayServerEntityMetadata(entityId, Collections.singletonList(textMetadata));
+        // Send the packet to the user
+        user.sendPacket(packet);
+    }
+
+    /**
+     * Sets the scale of the display
+     * <a href="https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Entity_metadata#Display">Display Entity Metadata information.</a>
+     * @param x the x scale
+     * @param y the y scale
+     * @param z the z scale
+     */
+    public void setScale(float x, float y, float z) {
+        Vector3f scaleValue = new Vector3f(x, y, z);
+        EntityData textMetadata = new EntityData(12, EntityDataTypes.VECTOR3F, scaleValue);
         // Create the metadata packet
         WrapperPlayServerEntityMetadata packet = new WrapperPlayServerEntityMetadata(entityId, Collections.singletonList(textMetadata));
         // Send the packet to the user
@@ -221,11 +269,33 @@ public class DisplayInstance {
         user.sendPacket(packet);
     }
 
+    public void delete() {
+        displayPipeline.shutdown();
+        displayPipeline = null;
+        removeEntity();
+    }
+
+    public void removeEntity() {
+        // Create the entity destroy packet
+        WrapperPlayServerDestroyEntities destroyPacket = new WrapperPlayServerDestroyEntities(entityId);
+        // Send the packet to the specified player
+        user.sendPacket(destroyPacket);
+    }
+
     /**
      * Stops playing a video
      */
     public void stopPlaying() {
-        displayWorker.scheduler.shutdown();
+        displayPipeline.displayExecutor.shutdown();
+        displayPipeline.processingExecutor.shutdown();
+        displayPipeline.grabberExecutor.shutdown();
+        displayPipeline.clearFrameBuffer();
+    }
+
+    public void tp(float x, float y, float z, float yaw, float pitch) {
+        Vector3d scaleValue = new Vector3d(x, y, z);
+        WrapperPlayServerEntityTeleport teleportPacket = new WrapperPlayServerEntityTeleport(entityId, scaleValue, yaw, pitch, true);
+        user.sendPacket(teleportPacket);
     }
 
     /**
