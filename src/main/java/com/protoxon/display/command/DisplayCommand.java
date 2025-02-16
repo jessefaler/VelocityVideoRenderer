@@ -20,10 +20,14 @@ public class DisplayCommand {
         root.executes(DisplayCommand::handleRootCommand); // Handle the execution of /display when no arguments are given
 
         // Register subcommands
-        root.then(CreateCommand.register());     // CREATE
-        root.then(SetCommand.register());    // SET
-        root.then(PlayCommand.register()); // PLAY
-        root.then(StopCommand.register()); // STOP
+        root.then(CreateCommand.register());  // CREATE
+        root.then(SetCommand.register());     // SET
+        root.then(PlayCommand.register());    // PLAY
+        root.then(StopCommand.register());    // STOP
+        root.then(PauseCommand.register());   // PAUSE
+        root.then(ResumeCommand.register());  // RESUME
+        root.then(TpCommand.register());      // TP
+        root.then(DeleteCommand.register());  // DELETE
 
         // Create the Brigadier command
         BrigadierCommand brigadierCommand = new BrigadierCommand(root);
@@ -42,5 +46,4 @@ public class DisplayCommand {
         source.sendPlainMessage("invalid command entry");
         return 0;
     }
-
 }
