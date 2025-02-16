@@ -10,6 +10,9 @@ import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public class PlayCommand {
     public static LiteralArgumentBuilder<CommandSource> register() {
         return LiteralArgumentBuilder.<CommandSource>literal("play")
@@ -24,9 +27,8 @@ public class PlayCommand {
     private static RequiredArgumentBuilder<CommandSource, String> type() {
         return RequiredArgumentBuilder.<CommandSource, String>argument("type", StringArgumentType.string())
                 .suggests((context, builder) -> {
-                    builder.suggest("mp4");
-                    builder.suggest("mkv");
-                    builder.suggest("youtube");
+                    builder.suggest("file");
+                    builder.suggest("url");
                     return builder.buildFuture();
                 })
                 .executes(context -> {
@@ -40,9 +42,14 @@ public class PlayCommand {
     private static RequiredArgumentBuilder<CommandSource, String> path() {
         return RequiredArgumentBuilder.<CommandSource, String>argument("path", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
-                    builder.suggest("/home/jesse/Downloads/southpark.mkv");
-                    builder.suggest("/home/jesse/Downloads/fight.mp4");
-                    builder.suggest("/home/jesse/Downloads/moves.mp4");
+                    String type = StringArgumentType.getString(context, "type");
+                    if(type.equals("file")) {
+                        builder.suggest("/home/jesse/Downloads/southpark.mkv");
+                        builder.suggest("/home/jesse/Downloads/fight.mp4");
+                        builder.suggest("/home/jesse/Downloads/moves.mp4");
+                    } else if (type.equals("url")) {
+                        builder.suggest("https://youtu.be/Frtax3pXPtg?feature=shared");
+                    }
                     return builder.buildFuture();
                 })
                 .executes(context -> {
@@ -51,18 +58,19 @@ public class PlayCommand {
                     String type = StringArgumentType.getString(context, "type");
                     String path = StringArgumentType.getString(context, "path");
                     DisplayInstance displayInstance = Display.DISPLAY_MANAGER.getDisplay(player);
+                    if(displayInstance == null) {
+                        source.sendMessage(Component.text("You do not have a display", NamedTextColor.RED));
+                        return 1;
+                    }
                     switch (type) {
-                        case "mp4":
-                            displayInstance.playMP4(path);
-                            source.sendMessage(Component.text("Playing mp4 video " + path, NamedTextColor.GRAY));
+                        case "file":
+                            if(!doseVideoExist(path, source)) return 1;
+                            displayInstance.playFromFile(path);
+                            source.sendMessage(Component.text("Playing video from file " + path, NamedTextColor.GRAY));
                             return 1;
-                        case "mkv":
-                            displayInstance.playMP4(path);
-                            source.sendMessage(Component.text("Playing mkv video " + path, NamedTextColor.GRAY));
-                            return 1;
-                        case "youtube":
-                            displayInstance.playYoutube(path);
-                            source.sendMessage(Component.text("Playing Youtube video " + path, NamedTextColor.GRAY));
+                        case "url":
+                            displayInstance.playFromURL(path);
+                            source.sendMessage(Component.text("Streaming video from url " + path, NamedTextColor.GRAY));
                             return 1;
                             default:
                             source.sendMessage(Component.text("Invalid command usage", NamedTextColor.RED));
@@ -70,4 +78,13 @@ public class PlayCommand {
                     return 0;
                 });
     }
+
+    public static boolean doseVideoExist(String videoFile, CommandSource source) {
+        if(Files.exists(Path.of(videoFile))) {
+            return true;
+        }
+        source.sendMessage(Component.text("Video file not found: " + videoFile, NamedTextColor.RED));
+        return false;
+    }
+
 }

@@ -32,6 +32,8 @@ public class SetCommand {
                     builder.suggest("see_through");
                     builder.suggest("line_width");
                     builder.suggest("max_pixels");
+                    builder.suggest("scale");
+                    builder.suggest("frame_rate");
                     return builder.buildFuture();
                 })
                 .executes(context -> {
@@ -49,6 +51,9 @@ public class SetCommand {
                     if(type.equals("has_shadow") || type.equals("use_default_background_color") || type.equals("see_through")) {
                         builder.suggest("true");
                         builder.suggest("false");
+                    }
+                    if(type.equals("frame_rate")) {
+                        builder.suggest("20");
                     }
                     return builder.buildFuture();
                 })
@@ -129,10 +134,40 @@ public class SetCommand {
                             displayInstance.setMaxPixels(maxPixels);
                             player.sendMessage(Component.text("Set max pixels to: " + maxPixels, NamedTextColor.GRAY));
                             return 1;
+                        case "scale":
+                            handleScaleInput(value, displayInstance, source);
+                            return 1;
+                        case "frame_rate":
+                            int maxFrameRate = Integer.parseInt(value);
+                            displayInstance.setMaxFrameRate(maxFrameRate);
+                            player.sendMessage(Component.text("Set max frame rate to: " + maxFrameRate, NamedTextColor.GRAY));
+                            return 1;
                         default:
                             player.sendMessage(Component.text("Invalid command argument" + value, NamedTextColor.RED));
                     }
                     return 0;
                 });
+    }
+
+    public static void handleScaleInput(String value, DisplayInstance displayInstance, CommandSource source) {
+        String[] parts = value.trim().split("\\s+");
+
+        try {
+            if (parts.length == 1) {
+                // Handle one integer case
+                float num = Float.parseFloat(parts[0]);
+                displayInstance.setScale(num);
+                source.sendMessage(Component.text("Set scale to: " + value, NamedTextColor.GRAY));
+            } else if (parts.length == 3) {
+                // Handle three integers case
+                float x = Float.parseFloat(parts[0]);
+                float y = Float.parseFloat(parts[1]);
+                float z = Float.parseFloat(parts[2]);
+                displayInstance.setScale(x, y, z);
+                source.sendMessage(Component.text("Set scale to: " + value, NamedTextColor.GRAY));
+            } else {
+                source.sendMessage(Component.text("Invalid command argument" + value, NamedTextColor.RED));
+            }
+        } catch (NumberFormatException ignored) {}
     }
 }
