@@ -30,6 +30,16 @@ public class DisplayManager {
     }
 
     /**
+     * deletes a players display
+     * @param player the viewer
+     */
+    public void deleteDisplay(Player player) {
+        DisplayInstance displayInstance = displays.get(player);
+        displayInstance.delete();
+        displays.remove(player);
+    }
+
+    /**
      * Creates a display instance for a player at the given location
      * @param player the viewer
      * @param location the location to spawn the display
