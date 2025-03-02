@@ -28,6 +28,7 @@ public class DisplayCommand {
         root.then(ResumeCommand.register());  // RESUME
         root.then(TpCommand.register());      // TP
         root.then(DeleteCommand.register());  // DELETE
+        root.then(DebugCommand.register());   // DEBUG
 
         // Create the Brigadier command
         BrigadierCommand brigadierCommand = new BrigadierCommand(root);

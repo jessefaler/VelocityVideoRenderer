@@ -13,6 +13,8 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
+import com.velocitypowered.api.proxy.Player;
+import net.kyori.adventure.chat.ChatType;
 import net.kyori.adventure.text.Component;
 
 /**
@@ -66,7 +68,7 @@ public class DisplayInstance {
 
     /**
      * Plays an video from a file (MP4, webm, ect)
-     * @param path the path to the file
+     * @param path the path to file
      */
     public void playFromFile(String path) {
         displayPipeline.play(path);
@@ -296,6 +298,15 @@ public class DisplayInstance {
         Vector3d scaleValue = new Vector3d(x, y, z);
         WrapperPlayServerEntityTeleport teleportPacket = new WrapperPlayServerEntityTeleport(entityId, scaleValue, yaw, pitch, true);
         user.sendPacket(teleportPacket);
+    }
+
+    public void enableDebugLogging(Player player) {
+        displayPipeline.player = player;
+        displayPipeline.debugLogging = true;
+    }
+
+    public void disableDebugLogging() {
+        displayPipeline.debugLogging = false;
     }
 
     /**

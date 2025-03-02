@@ -1,39 +1,50 @@
 package com.protoxon.display;
 
+import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
 import org.bytedeco.javacv.Java2DFrameConverter;
-
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.concurrent.*;
 
 public class DisplayPipeline {
 
     // Holds frames that have been processed but have not yet been displayed
-    private static final BlockingQueue<Component> frameBuffer = new LinkedBlockingQueue<>(50);
+    //private final BlockingQueue<Component> frameBuffer = new LinkedBlockingQueue<>();
+    int frameBufferCapacity = 175;
+    private final ArrayBlockingQueue<Component> frameBuffer = new ArrayBlockingQueue<>(frameBufferCapacity);
     // Define A thread executor for the frame grabber
-    ExecutorService grabberExecutor = Executors.newSingleThreadExecutor();
-    // Get available processor cores
-    int cores = Runtime.getRuntime().availableProcessors();
+    ExecutorService grabberExecutor;
     // Define a thread pool for frame processing
-    ExecutorService processingExecutor = Executors.newFixedThreadPool(cores * 2);
-    ScheduledExecutorService displayExecutor = Executors.newScheduledThreadPool(1);
+    ExecutorService processingExecutor;
+    ScheduledExecutorService displayExecutor;
     private FFmpegFrameGrabber grabber;
     Java2DFrameConverter converter = new Java2DFrameConverter();
-    ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    int maxFrameRate = 20; // Frames Per Second
     int maxPixels = 15000;
     private final DisplayInstance displayInstance;
+    double frameRatio;
+    double inputFrameRate;
+    int skippedFrames;
+    int frames;
+    boolean debugLogging;
+    Player player;
+    String videoFile;
 
     public DisplayPipeline(DisplayInstance displayInstance) {
         this.displayInstance = displayInstance;
     }
 
-    public void initializePipeline(String videoFile) {
+    public void initializePipeline(String videoFile) {;
         grabber = new FFmpegFrameGrabber(videoFile);
         try {
             grabber.start();
@@ -44,18 +55,71 @@ public class DisplayPipeline {
     }
 
     public void play(String videoFile) {
-        frameBuffer.clear();
+        this.videoFile = videoFile;
+        initializeExecutors();
         initializePipeline(videoFile);
         initializeDisplayRenderer();
     }
 
+    public void initializeExecutors() {
+        shutdown(); //
+        int cores = Runtime.getRuntime().availableProcessors();
+        grabberExecutor = Executors.newSingleThreadExecutor();
+        processingExecutor = Executors.newFixedThreadPool(cores * 2);
+        displayExecutor = Executors.newScheduledThreadPool(1);
+    }
+
+    public void shutdown() {
+        frameBuffer.clear();
+        if(grabberExecutor != null) {
+            grabberExecutor.shutdown();
+        }
+        if(processingExecutor != null) {
+            processingExecutor.shutdown();
+        }
+        if(displayExecutor != null) {
+            displayExecutor.shutdown();
+        }
+    }
+
+    public void logMessage(Component component) {
+        if(debugLogging) {
+            player.sendMessage(component);
+        }
+    }
+
+    public void logActionBarMessage(Component component) {
+        if(debugLogging) {
+            player.sendActionBar(component);
+        }
+    }
+
+    public void pause() {
+        displayExecutor.shutdown();
+    }
+
+    public void resume() {
+        displayExecutor = Executors.newScheduledThreadPool(1);
+        initializeDisplayRenderer();
+    }
+
     public void initializeDisplayRenderer() {
-        displayExecutor.scheduleAtFixedRate(this::renderFrame, 0, 50, TimeUnit.MILLISECONDS);
+        int renderUpdateInterval = 1000 / maxFrameRate;
+        displayExecutor.scheduleAtFixedRate(this::renderFrame, 0, renderUpdateInterval, TimeUnit.MILLISECONDS);
+    }
+
+    public void clearFrameBuffer() {
+        frameBuffer.clear();
     }
 
     public void renderFrame() {
         try {
-            Display.logger.error("Buffer Size: {}", frameBuffer.size());
+            if(frameBuffer.size() == 1) {
+                play(videoFile);
+            }
+            logActionBarMessage(Component.text("Frame buffer: " + frameBuffer.size() + "/" + frameBufferCapacity
+                    + " | Processed frames: " + frames + " | Skipped frames: " + skippedFrames, NamedTextColor.GOLD).compact());
+            Display.logger.error("Frames/Buffer: {}/{}", frames, frameBuffer.size());
             displayFrame(frameBuffer.take());
         } catch (InterruptedException e) {
             Display.logger.error("An error occurred in the display rendering pipeline\n{}", e.getMessage());
@@ -66,23 +130,53 @@ public class DisplayPipeline {
         displayInstance.setText(frame);
     }
 
+    public void updateMaxFrameRate(int maxFrameRate) {
+        frameRatio = inputFrameRate / maxFrameRate;
+        this.maxFrameRate = maxFrameRate;
+        // Restart the display executor service
+        pause();
+        resume();
+    }
+
     public void grabFrames() {
+        inputFrameRate = grabber.getFrameRate();
+        // Calculate the ratio of input to output frames.
+        // For 24fps -> 15fps, ratio is 24 / 15 = 1.6
+        frameRatio = inputFrameRate / maxFrameRate;
+        // Accumulator to track how many frames have passed
+        double accumulator = 0.0;
         Frame frame;
         try {
             while ((frame = grabber.grabImage()) != null) {
+                frames++;
                 if (frame.image == null) {
                     Display.logger.error("Skipped null frame.");
                     continue;
                 }
+                // Increment the accumulator each time a frame is grabbed.
+                accumulator += 1.0;
+                // If we haven't reached the threshold to display a frame, drop this one.
+                if (accumulator < frameRatio) {
+                    skippedFrames++;
+                    Display.logger.warn("accumulator skipped a frame. " + skippedFrames + " frames skipped");
+                    continue;
+                }
+
+                // When the accumulator exceeds the ratio, we process the frame.
+                accumulator -= frameRatio;
+
                 // Convert the frame to a buffered image
                 BufferedImage bufferedImage = frameToImage(frame);
                 // Submit frame to the processing thread pool
                 processingExecutor.submit(() -> processFrame(bufferedImage));
+                while (frameBuffer.remainingCapacity() == 0) {
+                    Thread.sleep(10); // Small sleep to prevent busy-waiting
+                }
             }
             grabber.stop();
         } catch (FFmpegFrameGrabber.Exception e) {
             Display.logger.error("An error occurred while grabbing a frame in the frame grabbing pipeline\n{}", e.getMessage());
-        }
+        } catch (InterruptedException ignored) {}
     }
 
     public void processFrame(BufferedImage bufferedImage) {
@@ -126,28 +220,6 @@ public class DisplayPipeline {
         return resizedImage;
     }
 
-    /*
-    public Component convertToComponent(int[] pixels, int width, int height) {
-        TextComponent.Builder frameBuilder = net.kyori.adventure.text.Component.text();
-        StringBuilder lineBreak = new StringBuilder("\n"); // Pre-created for efficiency
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int pixel = pixels[y * width + x];
-
-                // Extract RGB values from the pixel
-                int red = (pixel >> 16) & 0xFF;
-                int green = (pixel >> 8) & 0xFF;
-                int blue = pixel & 0xFF;
-
-                // Append the colored block character to the builder
-                frameBuilder.append(net.kyori.adventure.text.Component.text("█").color(TextColor.color(red, green, blue)));
-            }
-            frameBuilder.append(net.kyori.adventure.text.Component.text(lineBreak.toString())); // Append new line efficiently
-        }
-        return frameBuilder.build();
-    }
-     */
-
     public Component convertToComponent(int[] pixels, int width, int height) {
         // Create the overall component builder for the frame
         TextComponent.Builder frameBuilder = net.kyori.adventure.text.Component.text();
@@ -180,6 +252,39 @@ public class DisplayPipeline {
             frameBuilder.append(net.kyori.adventure.text.Component.text("\n"));
         }
         return frameBuilder.build();
+    }
+
+    public String getStreamUrl(String videoUrl) {
+        // Command to run yt-dlp to get the stream URL
+        String[] command = {
+                "yt-dlp",           // yt-dlp command
+                "-f", "worst",       // Select the best quality format
+                "--get-url",        // Option to get the direct URL
+                videoUrl            // URL passed as an argument
+        };
+
+        // Create and start the process
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        Process process;
+        try {
+            process = processBuilder.start();
+        } catch (IOException e) {
+            Display.logger.error("Error while fetching youtube stream url: {}", e.getMessage());
+            return null;
+        }
+
+        // Capture the output of the yt-dlp command
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String streamUrl = reader.readLine();  // Read the URL from yt-dlp's output
+            if (streamUrl != null) {
+                return streamUrl;  // Return the stream URL
+            } else {
+                Display.logger.error("No URL found in yt-dlp output.");
+            }
+        } catch (Exception e) {
+            Display.logger.error("Error extracting stream URL: {}", e.getMessage());
+        }
+        return null;
     }
 
 }
